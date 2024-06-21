@@ -12,21 +12,24 @@ import (
 	"github.com/castai/egressd/exporter/config"
 	"github.com/castai/egressd/pb"
 	"github.com/castai/promwrite"
+	"fmt"
+	"strings"
 )
 
 type promWriter interface {
 	Write(ctx context.Context, req *promwrite.WriteRequest, options ...promwrite.WriteOption) (*promwrite.WriteResponse, error)
 }
 
-func NewPromRemoteWriteSink(log logrus.FieldLogger, sinkName string, cfg config.SinkPromRemoteWriteConfig) Sink {
+func NewPromRemoteWriteSink(log logrus.FieldLogger, sinkName string, cfg config.SinkPromRemoteWriteConfig, extraLabels ExtraLabels) Sink {
 	return &PromRemoteWriteSink{
 		log: log.WithFields(map[string]interface{}{
 			"sink_type": "prom_remote_write",
 			"sink_name": sinkName,
 		}),
-		client:     promwrite.NewClient(cfg.URL),
-		timeGetter: timeGetter,
-		cfg:        cfg,
+		client:      promwrite.NewClient(cfg.URL),
+		timeGetter:  timeGetter,
+		cfg:         cfg,
+		extraLabels: extraLabels,
 	}
 }
 
@@ -35,10 +38,11 @@ func timeGetter() time.Time {
 }
 
 type PromRemoteWriteSink struct {
-	cfg        config.SinkPromRemoteWriteConfig
-	log        logrus.FieldLogger
-	client     promWriter
-	timeGetter func() time.Time
+	cfg         config.SinkPromRemoteWriteConfig
+	log         logrus.FieldLogger
+	client      promWriter
+	timeGetter  func() time.Time
+	extraLabels ExtraLabels
 }
 
 func (s *PromRemoteWriteSink) Push(ctx context.Context, batch *pb.PodNetworkMetricBatch) error {
@@ -69,9 +73,16 @@ func (s *PromRemoteWriteSink) Push(ctx context.Context, batch *pb.PodNetworkMetr
 
 			{Name: "proto", Value: protoString(uint8(m.Proto))},
 		}
+
+		// add any defined extra labels
+		for k, v := range s.extraLabels {
+			labels = append(labels, promwrite.Label{Name: k, Value: v})
+		}
+
 		sort.Slice(labels, func(i, j int) bool {
 			return labels[i].Name < labels[j].Name
 		})
+
 		ts = append(ts, promwrite.TimeSeries{
 			Labels: labels,
 			Sample: promwrite.Sample{
@@ -116,4 +127,25 @@ func protoString(p uint8) string {
 		return protoNames[p]
 	}
 	return strconv.Itoa(int(p))
+}
+
+// ExtraLabels is a custom type that implements the flag.Value interface
+type ExtraLabels map[string]string
+
+// String is part of the flag.Value interface
+func (l *ExtraLabels) String() string {
+	return fmt.Sprint(*l)
+}
+
+// Set is part of the flag.Value interface
+// It parses a key=value pair and adds it to the map
+func (l *ExtraLabels) Set(value string) error {
+	parts := strings.SplitN(value, "=", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid label format: %s", value)
+	}
+	key := parts[0]
+	val := parts[1]
+	(*l)[key] = val
+	return nil
 }
