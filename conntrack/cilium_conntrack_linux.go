@@ -50,7 +50,6 @@ func listRecords(maps []interface{}, clockSource ClockSource, filter EntriesFilt
 			}
 		}
 
-		defer m.Close()
 		cb := func(key bpf.MapKey, v bpf.MapValue) {
 			fetchedCount++
 			k := key.(ctmap.CtKey).ToHost().(*ctmap.CtKey4Global)
@@ -77,8 +76,12 @@ func listRecords(maps []interface{}, clockSource ClockSource, filter EntriesFilt
 			}
 		}
 		if err = m.DumpWithCallback(cb); err != nil {
+			m.Close()
 			return nil, fmt.Errorf("error while collecting BPF map entries: %w", err)
 		}
+
+		// Explicitly close the ctmap after every iteration
+		m.Close()
 	}
 	metrics.SetConntrackEntriesCount(float64(fetchedCount))
 	return entries, nil
