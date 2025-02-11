@@ -113,14 +113,18 @@ spec:
           httpGet:
             port: http-server
             path: /healthz
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          initialDelaySeconds: {{ .Values.collector.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.collector.livenessProbe.periodSeconds }}
+          failureThreshold: {{ .Values.collector.livenessProbe.failureThreshold }}
+          successThreshold: {{ .Values.collector.livenessProbe.successThreshold }}
         readinessProbe:
           httpGet:
             port: http-server
             path: /healthz
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          initialDelaySeconds: {{ .Values.collector.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.collector.readinessProbe.periodSeconds }}
+          failureThreshold: {{ .Values.collector.readinessProbe.failureThreshold }}
+          successThreshold: {{ .Values.collector.readinessProbe.successThreshold }}
       dnsPolicy: {{.Values.collector.dnsPolicy}}
       volumes:
         {{- if ne .Values.collector.ctMode "cilium"}}
